@@ -1,28 +1,16 @@
-/*
-Shtriped Interpreter
-s = print as String
-h = trasH
-t = Take input as integer
-r = take input as stRing
-i = Increment
-p = Print as integer
-e = dEclare
-d = Decrement
-\ = inline comment
-[] = nestable block comment
-*/
+// Shtriped interpreter - http://github.com/HelkaHomba/shtriped
 
-// Node packages
 var fs = require('fs')
 var bigInt = require('big-integer')
-var regexEscape = require('escape-string-regexp')
+var readlineSync = require('readline-sync')
 
 var ALPHABET = '\t\n\v\f\r !"#$%&\'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~'
 var CODE_ALPHABET = ALPHABET.split('').filter(function(c) { return '\t\v\f'.indexOf(c) === -1 }).join('')
 var INT_PATTERN = /^\s*\+?\d+\s*$/
+
 var COMPONENTS = Object.freeze({
 	SEPERATOR: ' ',
-	COMMENT: '\\',
+	COMMENT: '\\\\', //double escaped for use in regex
 	COMMENT_LEFT: '[',
 	COMMENT_RIGHT: ']'
 })
@@ -31,10 +19,10 @@ var COMMANDS = Object.freeze({
 	TRASH: 'h',
 	TAKE_INT: 't',
 	TAKE_STR: 'r',
-	INCR: 'i',
+	INCREMENT: 'i',
 	PRINT_INT: 'p',
 	DECLARE: 'e',
-	DECR: 'd'
+	DECREMENT: 'd'
 })
 
 function ShtripedError(message, stmt) {
@@ -45,7 +33,7 @@ function ShtripedError(message, stmt) {
 }
 ShtripedError.prototype = Object.create(Error.prototype)
 ShtripedError.prototype.name = 'ShtripedError'
-function newErr(message, stmt) {
+function err(message, stmt) {
 	return new ShtripedError(message, stmt)
 }
 
@@ -78,9 +66,9 @@ function intToStr(i) {
 	return ALPHABET.charAt(0).repeat(length - s.length) + s
 }
 
-function getEnv(key, env) {
-	while (!env.hasOwnProperty(key)) {
-		if (!env.hasOwnProperty('')) {
+function getEnv(variable, env) {
+	while (!(variable in env)) {
+		if (!('' in env)) {
 			return null
 		}
 		env = env['']
@@ -109,21 +97,21 @@ function sanitize(code) {
 	}
 	var tmpCode = []
 	for (var i = 0; i < code.length; i++) {
-		if (!toRemove.hasOwnProperty(i)) {
+		if (!(i in toRemove)) {
 			tmpCode.push(code.charAt(i))
 		}
 	}
 	code = tmpCode.join('')
 
 	// Remove comments
-	code = code.replace(new RegExp(regexEscape(COMPONENTS.COMMENT) + '.*$', 'gm'), '')
+	code = code.replace(new RegExp(COMPONENTS.COMMENT + '.*$', 'gm'), '')
 	// Remove trailing whitespace and empty lines
 	code = code.replace(/\s+$/gm,'').replace(/^\r?\n/, '')
 
 	// Check for invalid characters
 	for(var i = 0; i < code.length; i++) {
 		if (CODE_ALPHABET.indexOf(code.charAt(i)) === -1)
-			throw newErr('Code contains forbidden character "' + code.charAt(i) + '".')
+			throw err('Code contains forbidden character "' + code.charAt(i) + '".')
 	}
 	return code
 }
@@ -140,12 +128,12 @@ function parse(code, split) {
 	while (i < code.length) {
 		var stmt = code[i++].split(COMPONENTS.SEPERATOR)
 		if (!stmt.every(function(s) { return s }))
-			throw newErr('Invalid arrangement of separators on the line "' + code[i - 1] + '".')
+			throw err('Invalid arrangement of separators on the line "' + code[i - 1] + '".')
 		if (i < code.length && code[i].charAt(0) === COMPONENTS.SEPERATOR) { // Function definition
 			for (var j = 1; j < stmt.length; j++) {
 				for (var k = 1; k < j; k++) {
 					if (stmt[j] === stmt[k])
-						throw newErr('The definition for function "' + stmt[0] + '" cannot have multiple arguments with the name "' + stmt[j] + '".')
+						throw err('The definition for function "' + stmt[0] + '" cannot have multiple arguments with the name "' + stmt[j] + '".')
 				}
 			}
 			var body = []
@@ -171,34 +159,34 @@ function passAlong(variable) {
 	return variable.add(bigInt.zero) // adding zero to a big int effectively copies it
 }
 
-function callBuiltIn(stmt, env, inputObj) {
+function callBuiltIn(stmt, env) {
 	if (stmt.args.length !== 1)
-		throw newErr('Attempted call to built-in function "' + stmt.name + '" expects one argument but got ' + stmt.args.length + '.', stmt)
+		throw err('Built-in function "' + stmt.name + '" expects one argument but got ' + stmt.args.length + '.', stmt)
 	var arg = stmt.args[0]
 	if (stmt.name === COMMANDS.DECLARE) {
-		if (env.hasOwnProperty(arg))
-			throw newErr('Variable "' + arg + '" has already been declared in this scope.', stmt)
+		if (arg in env)
+			throw err('Variable "' + arg + '" has already been declared in this scope.', stmt)
 		env[arg] = bigInt.zero
 		return env[arg]
 	}
 	if (stmt.name === COMMANDS.TRASH) {
-		if (!env.hasOwnProperty(arg))
-			throw newErr('Variable "' + arg + '" has not been declared in this scope and thus cannot be trashed.', stmt)
+		if (!(arg in env))
+			throw err('Variable "' + arg + '" has not been declared in this scope and thus cannot be trashed.', stmt)
 		var val = env[arg]
 		delete env[arg]
 		return val
 	}
 	var argEnv = getEnv(arg, env)
 	if (!argEnv)
-		throw newErr('Variable "' + arg + '" not found while trying to call built-in function "' + stmt.name + '".', stmt)
+		throw err('Variable "' + arg + '" not found while trying to call built-in function "' + stmt.name + '".', stmt)
 	var val = argEnv[arg]
 	if (isFunc(val))
-		throw newErr('Built-in function "' + stmt.name + '" cannot be called on the function "' + arg + '".', stmt)
+		throw err('Built-in function "' + stmt.name + '" cannot be called on the function "' + arg + '".', stmt)
 	switch(stmt.name) {
-		case COMMANDS.INCR:
+		case COMMANDS.INCREMENT:
 			argEnv[arg] = val.add(bigInt.one)
 			return argEnv[arg]
-		case COMMANDS.DECR:
+		case COMMANDS.DECREMENT:
 			if (val.isZero()) {
 				return null
 			}
@@ -208,52 +196,48 @@ function callBuiltIn(stmt, env, inputObj) {
 			process.stdout.write(val.toString())
 			return val
 		case COMMANDS.TAKE_INT:
-			if (inputObj.index >= inputObj.input.length)
-				throw newErr('Input exhausted, cannot take integer as input.', stmt)
-			var input = inputObj.input[inputObj.index++]
+			var input = readlineSync.question()
 			if (!INT_PATTERN.test(input))
-				throw newErr('Cannot parse "' + input + '" as a positive decimal integer.', stmt)
+				throw err('Cannot parse "' + input + '" as a positive decimal integer.', stmt)
 			argEnv[arg] = bigInt(input)
 			return argEnv[arg]
 		case COMMANDS.PRINT_STR:
 			process.stdout.write(intToStr(val))
 			return val
 		case COMMANDS.TAKE_STR:
-			if (inputObj.index >= inputObj.input.length)
-				throw newErr('Input list exhausted, cannot take string as input.', stmt)
-			var input = inputObj.input[inputObj.index++]
+			var input = readlineSync.question()
 			for(var i = 0; i < input.length; i++) {
 				if (ALPHABET.indexOf(input.charAt(i)) === -1)
-					throw newErr('Input string contains forbidden character "' + input.charAt(i) + '".', stmt)
+					throw err('Input string contains forbidden character "' + input.charAt(i) + '".', stmt)
 			}
 			argEnv[arg] = strToInt(input)
 			return argEnv[arg]
 	}
-	throw newErr('Function "' + stmt.name + '" not found.', stmt)
+	//impossible to get here
 }
 
-function execute(func, env, inputObj) {
+function execute(func, env) {
 	var retVal = bigInt.zero
 	for (var i = 0; i < func.body.length; i++) {
 		var stmt = func.body[i]
 		if (stmt.body) { // Function definition
-			if (env.hasOwnProperty(stmt.name))
-				throw newErr('Variable "' + stmt.name + '" has already been declared in this scope and must be trashed to be (re)defined as a function.', stmt)
+			if (stmt.name in env)
+				throw err('Variable "' + stmt.name + '" has already been declared in this scope and must be trashed to be (re)defined as a function.', stmt)
 			retVal = env[stmt.name] = { args: stmt.args, body: stmt.body, env: env }
 		} else { // Function call
 			var callEnv = getEnv(stmt.name, env)
 			if (callEnv) { // User defined function
 				var userFunc = callEnv[stmt.name]
 				if (!isFunc(userFunc))
-					throw newErr('Cannot call the integer "' + stmt.name + '" as a function.', stmt)
+					throw err('Cannot call the integer "' + stmt.name + '" as a function.', stmt)
 				if (stmt.args.length !== userFunc.args.length && stmt.args.length !== userFunc.args.length + 1)
-					throw newErr('Function "' + stmt.name + '" expects ' + userFunc.args.length + ' or ' + (userFunc.args.length + 1) + ' arguments but got ' + stmt.args.length + '.', stmt)
+					throw err('Function "' + stmt.name + '" expects ' + userFunc.args.length + ' or ' + (userFunc.args.length + 1) + ' arguments but got ' + stmt.args.length + '.', stmt)
 				
 				var newEnv = { '': userFunc.env }
 				for (var j = 0; j < userFunc.args.length; j++) {
 					var argEnv = getEnv(stmt.args[j], env)
 					if (!argEnv)
-						throw newErr('Variable "' + stmt.args[j] + '" not found while trying to call function "' + stmt.name + '".', stmt)
+						throw err('Variable "' + stmt.args[j] + '" not found while trying to call function "' + stmt.name + '".', stmt)
 					newEnv[userFunc.args[j]] = passAlong(argEnv[stmt.args[j]])
 				}
 
@@ -261,16 +245,25 @@ function execute(func, env, inputObj) {
 					env = newEnv
 					i = -1
 				} else { // normal call
-					retVal = execute(userFunc, newEnv, inputObj)
+					retVal = execute(userFunc, newEnv)
 					if (stmt.args.length > userFunc.args.length) {
 						var retVar = stmt.args[stmt.args.length - 1], retEnv = getEnv(retVar, env)
 						if (!retEnv)
-							throw newErr('Variable "' + retVar + '" not found while returning from function "' + stmt.name + '".', stmt)
+							throw err('Variable "' + retVar + '" not found while returning from function "' + stmt.name + '".', stmt)
 						retEnv[retVar] = retVal
 					}
 				}
 			} else { // Built-in function
-				var returned = callBuiltIn(stmt, env, inputObj)
+				var funcNotFound = true
+				for(var cmd in COMMANDS) {
+					if (COMMANDS[cmd] === stmt.name) {
+						funcNotFound = false
+						break
+					}
+				}
+				if (funcNotFound)
+					throw err('Function "' + stmt.name + '" not found.', stmt)
+				var returned = callBuiltIn(stmt, env)
 				if (returned === null) {
 					break
 				}
@@ -281,50 +274,24 @@ function execute(func, env, inputObj) {
 	return passAlong(retVal)
 }
 
-// Runs Shtriped code given as a string on list of input strings, importing any desired library files
-function run(code, input, libs) {
-	if (undef(input)) {
-		input = []
-	}
+// Runs list of Shtriped code files in order as if all the code was in one file (block comments do not carry between files)
+function run(files) {
+	if (files.length < 1)
+		throw err('At least one code file is required.')
 	var bytecode = []
-	function readLib(i) {
-		if (i < libs.length) {
-			fs.readFile(libs[i], 'utf8', function(err, data) {
-				if (err)
-					throw newErr('Issue loading library file "' + libs[i] + '". ' + err.message)
-				Array.prototype.push.apply(bytecode, parse(sanitize(data)))
-				readLib(i + 1)
-			})
-		} else {
+	function readFile(i) {
+		fs.readFile(files[i], 'utf8', function(error, code) {
+			if (error)
+				throw err('Issue loading code file "' + files[i] + '". ' + error.message)
 			Array.prototype.push.apply(bytecode, parse(sanitize(code)))
-			execute({ body: bytecode }, {}, { input: input, index: 0 })
-		}
+			if (i + 1 < files.length) {
+				readFile(i + 1)
+			} else {
+				execute({ body: bytecode }, {})
+			}
+		})
 	}
-	readLib(0)
+	readFile(0)
 }
 
-// Runs a Shtriped code file with a given input file, importing any desired library files
-function runFile(file, inputFile, libs) {
-	fs.readFile(file, 'utf8', function(err, data) {
-		if (err)
-			throw newErr('Issue loading code file "' + file + '". ' + err.message)
-		if (undef(inputFile)) {
-			run(data, [], libs)
-		} else {
-			fs.readFile(inputFile, 'utf8', function(inputErr, inputData) {
-				if (inputErr)
-					throw newErr('Issue loading input file "' + inputFile + '". ' + inputErr.message)
-				var input = inputData.split(/\r?\n/)
-				if (!input[input.length - 1]) {
-					input = input.slice(0, input.length - 1)
-				}
-				run(data, input, libs)
-			})
-		}
-	})
-}
-
-// Run Shtriped code according to command line arguments
-if (process.argv.length < 3)
-	throw newErr('Code file required. Command line format: node shtriped.js codeFile [inputFile [libFile1 [libFile2 ...]]]]')
-runFile(process.argv[2], process.argv[3], process.argv.slice(5))
+run(process.argv.slice(2))
