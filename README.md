@@ -2,7 +2,7 @@
 
 ## What is Shtriped?
 
-Shtriped (pronounced like "striped" if you were Sean Connery) is a minimalistic, whitespace-sensitive, procedural programming language, largely inspired by [Prindeal](http://codegolf.stackexchange.com/q/54530/26997).
+Shtriped (pronounced how Sean Connery would say "striped") is a minimalistic, whitespace-sensitive, procedural programming language, largely inspired by [Prindeal](http://codegolf.stackexchange.com/q/54530/26997).
 
 It has only 8 built-in commands or functions, whose names spell out the word "shtriped":
 
@@ -17,7 +17,7 @@ It has only 8 built-in commands or functions, whose names spell out the word "sh
 |    `e`   | d**E**clare variable       |
 |    `d`   | **D**ecrement              |
 
-A backslash `\` starts an inline comment and matching square brackets `[` `]` are nestable block comments. Apart from these commands and comments, the only other characters that convey inherent meaning in Shtriped are newlines and spaces.
+A backslash `\` starts an inline comment and matching square brackets `[` `]` are nestable block comments. Apart from these commands and comments, the only other characters that have inherent meaning in Shtriped are newlines and spaces.
 
 ## Running Shtriped
 
@@ -27,7 +27,7 @@ To run Shtriped you will need to at least download [shtriped.js](http://raw.gith
 
 This will execute the code in `myShtripedFile` and display any resulting output.
 
-If multiple arguments are given they will all be executed as Shtriped files in the same environment, in order. For example, running
+If more arguments are given they will all be run as Shtriped files in the same environment, in order. For example, running
 
     node shtriped.js fileA fileB fileC
 
@@ -37,4 +37,58 @@ There are no command line options and there is no [REPL](http://wikipedia.org/wi
 
 ## Programming in Shtriped
 
-Coming soon.
+### Sanitization
+
+Before a Shtriped program is executed, it is first sanitized by removing block comments, inline comments, trailing whitespace on all lines, and empty lines, all in that order.
+
+For example:
+
+    program that prints "1" ]
+    e a \ declare the variable a to 0
+        
+    i a \ increment a to 1
+    [[i a \ increment a to 2]
+    i a \ increment a to 3]
+    p a \ print a as a decimal integer
+    [ final block comment
+
+Is sanitized as:
+
+    e a
+    i a
+    p a
+   
+Note that block comments that encounter the start or end of the file do not require matching brackets.
+
+### Basics
+
+**Every line in a sanitized Shtriped program must have this form, potentially indented by a number of spaces:**
+
+    {function name} {argument 1} {argument 2} {argument 3} ...
+    
+The `{function name}` and all arguments must each be a valid variable identifier. A variable identifier in Shtriped may be any nonempty string containing only [printable ASCII characters](https://en.wikipedia.org/wiki/ASCII#ASCII_printable_characters), excluding space:
+
+    !"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_`abcdefghijklmnopqrstuvwxyz{|}~
+
+So things like `6` or `"rat"` that could not be variable names in most programming languages are perfectly valid variable names in Shtriped.
+
+There are only two variable types in Shtriped:
+  
+- Non-negative, arbritrary precision integer (0, 1, 2, 3, ...)
+- User defined functions.
+
+More TODO
+
+### Built-In Functions
+
+The 8 eponymous functions built into Shtriped all take one argument.
+
+TODO
+
+### User Defined Functions
+
+TODO
+
+### Examples
+
+TODO
