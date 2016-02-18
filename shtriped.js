@@ -12,6 +12,7 @@ d = Decrement
 [] = nestable block comment
 */
 
+// Node packages
 var fs = require('fs')
 var bigInt = require('big-integer')
 var regexEscape = require('escape-string-regexp')
@@ -19,7 +20,6 @@ var regexEscape = require('escape-string-regexp')
 var ALPHABET = '\t\n\v\f\r !"#$%&\'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~'
 var CODE_ALPHABET = ALPHABET.split('').filter(function(c) { return '\t\v\f'.indexOf(c) === -1 }).join('')
 var INT_PATTERN = /^\s*\+?\d+\s*$/
-
 var COMPONENTS = Object.freeze({
 	SEPERATOR: ' ',
 	COMMENT: '\\',
@@ -36,12 +36,6 @@ var COMMANDS = Object.freeze({
 	DECLARE: 'e',
 	DECR: 'd'
 })
-var ALL_COMMANDS = [], CALLS = { user: 0 }
-for (var command in COMMANDS) {
-	ALL_COMMANDS.push(COMMANDS[command])
-	CALLS[COMMANDS[command]] = 0
-}
-ALL_COMMANDS = Object.freeze(ALL_COMMANDS)
 
 function ShtripedError(message, stmt) {
 	this.message = message
@@ -51,7 +45,6 @@ function ShtripedError(message, stmt) {
 }
 ShtripedError.prototype = Object.create(Error.prototype)
 ShtripedError.prototype.name = 'ShtripedError'
-
 function newErr(message, stmt) {
 	return new ShtripedError(message, stmt)
 }
@@ -178,13 +171,9 @@ function passAlong(variable) {
 	return variable.add(bigInt.zero) // adding zero to a big int effectively copies it
 }
 
-// returns null if execution should return immediately
 function callBuiltIn(stmt, env, inputObj) {
-	if (ALL_COMMANDS.indexOf(stmt.name) === -1)
-		throw newErr('Function "' + stmt.name + '" not found.', stmt)
-	CALLS[stmt.name]++
 	if (stmt.args.length !== 1)
-		throw newErr('Built-in function "' + stmt.name + '" expects one argument but got ' + stmt.args.length + '.', stmt)
+		throw newErr('Attempted call to built-in function "' + stmt.name + '" expects one argument but got ' + stmt.args.length + '.', stmt)
 	var arg = stmt.args[0]
 	if (stmt.name === COMMANDS.DECLARE) {
 		if (env.hasOwnProperty(arg))
@@ -240,6 +229,7 @@ function callBuiltIn(stmt, env, inputObj) {
 			argEnv[arg] = strToInt(input)
 			return argEnv[arg]
 	}
+	throw newErr('Function "' + stmt.name + '" not found.', stmt)
 }
 
 function execute(func, env, inputObj) {
@@ -253,7 +243,6 @@ function execute(func, env, inputObj) {
 		} else { // Function call
 			var callEnv = getEnv(stmt.name, env)
 			if (callEnv) { // User defined function
-				CALLS.user++
 				var userFunc = callEnv[stmt.name]
 				if (!isFunc(userFunc))
 					throw newErr('Cannot call the integer "' + stmt.name + '" as a function.', stmt)
@@ -297,9 +286,6 @@ function run(code, input, libs) {
 	if (undef(input)) {
 		input = []
 	}
-	if (undef(libs)) {
-		libs = []
-	}
 	var bytecode = []
 	function readLib(i) {
 		if (i < libs.length) {
@@ -312,7 +298,6 @@ function run(code, input, libs) {
 		} else {
 			Array.prototype.push.apply(bytecode, parse(sanitize(code)))
 			execute({ body: bytecode }, {}, { input: input, index: 0 })
-			console.log('\nCALLS:', CALLS) //for debugging only
 		}
 	}
 	readLib(0)
@@ -338,3 +323,8 @@ function runFile(file, inputFile, libs) {
 		}
 	})
 }
+
+// Run Shtriped code according to command line arguments
+if (process.argv.length < 3)
+	throw newErr('Code file required. Command line format: node shtriped.js codeFile [inputFile [libFile1 [libFile2 ...]]]]')
+runFile(process.argv[2], process.argv[3], process.argv.slice(5))
