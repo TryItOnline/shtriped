@@ -255,6 +255,7 @@ function execute(func, env) {
 				}
 
 				if (i === func.body.length - 1 && userFunc === func && stmt.args.length === userFunc.args.length) { // Recursive tail call
+					retVal = bigInt.zero
 					env = newEnv
 					i = -1
 				} else { // Normal call
