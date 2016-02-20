@@ -26,7 +26,7 @@ def DECREMENT(argEnv, arg, val):
     argEnv[arg] = val - 1
     return argEnv[arg]
 def PRINT_INT(argEnv, arg, val):
-    print val
+    sys.stdout.write(str(val))
     return val
 def TAKE_INT(argEnv, arg, val):
     u_input = raw_input('Enter a number: ')
@@ -35,14 +35,14 @@ def TAKE_INT(argEnv, arg, val):
     argEnv[arg] = int(u_input)
     return argEnv[arg]
 def PRINT_STR(argEnv, arg, val):
-    print val
+    sys.stdout.write(intToStr(val))
     return val
 def TAKE_STR(argEnv, arg, val):
     u_input = raw_input('Enter a string: ')
     for i in u_input:
         if ALPHABET.index(i) == -1:
             raise ShtripedError('Input string contains forbidden character "' + u_input[i] + '".', statement)
-    argEnv[arg] = u_input
+    argEnv[arg] = strToInt(u_input)
     return argEnv[arg]
 
 COMMAND_FUNCTIONS = {}
@@ -67,6 +67,28 @@ class ShtripedError(Exception):
             self.value += ' [' + COMPONENTS['SEPARATOR'].join([statement['name']] + statement['args']) + ']'
     def __str__(self):
         return repr(self.value)
+
+def strToInt(s):
+	i = 0
+	place = 1
+	for j in range(len(s) - 1, -1, -1):
+		i = i + (place * (ALPHABET.index(str[j]) + 1))
+		place = place * len(ALPHABET)
+	return i
+
+def intToStr(i):
+	length = 0
+	offset = 1
+	while i >= offset:
+		i -= offset
+		offset = offset * len(ALPHABET)
+		length += 1
+	s = ''
+	while not i == 0:
+		s += ALPHABET[i % len(ALPHABET)]
+		i = i / len(ALPHABET)
+	s = s[::-1]
+	return ALPHABET[0] * (length - len(s)) + s
 
 def getEnv(variable, env):
     while not variable in env:
