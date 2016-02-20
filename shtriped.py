@@ -1,6 +1,7 @@
 import sys
 import re
 import collections
+import copy
 
 ALPHABET = '\t\n\v\f\r !"#$%&\'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~'
 CODE_ALPHABET = [item for item in ALPHABET if not item in'\t\v\f']
@@ -22,33 +23,33 @@ def INCREMENT(argEnv, arg, val):
     return argEnv[arg]
 def DECREMENT(argEnv, arg, val):
     if val == 0: return None
-    argEnv[arg] = val.subtract(1)
+    argEnv[arg] = val - 1
     return argEnv[arg]
 def PRINT_INT(argEnv, arg, val):
     print val
     return val
 def TAKE_INT(argEnv, arg, val):
-    input = input('Enter a number: ')
-    if not INT_PATTERN.test(input):
-        raise ShtripedError('Cannot parse "' + input + '" as a positive decimal integer.', statement)
-    argEnv[arg] = int(input)
+    u_input = raw_input('Enter a number: ')
+    if not re.search(INT_PATTERN, u_input):
+        raise ShtripedError('Cannot parse "' + u_input + '" as a positive decimal integer.', statement)
+    argEnv[arg] = int(u_input)
     return argEnv[arg]
 def PRINT_STR(argEnv, arg, val):
     print val
     return val
 def TAKE_STR(argEnv, arg, val):
-    input = input('Enter a string: ')
-    for i in input:
+    u_input = raw_input('Enter a string: ')
+    for i in u_input:
         if ALPHABET.index(i) == -1:
-            raise ShtripedError('Input string contains forbidden character "' + input[i] + '".', statement)
-    argEnv[arg] = int(input)
+            raise ShtripedError('Input string contains forbidden character "' + u_input[i] + '".', statement)
+    argEnv[arg] = u_input
     return argEnv[arg]
 
 COMMAND_FUNCTIONS = {}
 COMMAND_FUNCTIONS[COMMANDS['INCREMENT']] = INCREMENT
 COMMAND_FUNCTIONS[COMMANDS['DECREMENT']] = DECREMENT
 COMMAND_FUNCTIONS[COMMANDS['PRINT_INT']] = PRINT_INT
-COMMAND_FUNCTIONS[COMMANDS['TAKE_INT']] = PRINT_STR
+COMMAND_FUNCTIONS[COMMANDS['TAKE_INT']] = TAKE_INT
 COMMAND_FUNCTIONS[COMMANDS['PRINT_STR']] = PRINT_STR
 COMMAND_FUNCTIONS[COMMANDS['TAKE_STR']] = TAKE_STR
 
@@ -68,7 +69,6 @@ class ShtripedError(Exception):
         return repr(self.value)
 
 def getEnv(variable, env):
-    print 'env', env
     while not variable in env:
         if not '' in env:
             return None
@@ -130,11 +130,10 @@ def parse(code):
             bytecode.append({ 'name': statement[0], 'args': statement[1:], 'body': parse(body) })
         else:
             bytecode.append({ 'name': statement[0], 'args': statement[1:], 'body': None}) # function call
-        # print bytecode
     return bytecode
 
 def passAlong(variable):
-    return variable if not hasattr(variable, 'deepcopy') or (isinstance(variable, collections.Mapping) and variable['body']) else variable.deepcopy()
+    return variable if isinstance(variable, collections.Mapping) and variable['body'] else copy.deepcopy(variable)
 
 # Executes one of the 8 built-in Shtriped commands
 def callBuiltIn(statement, env):
@@ -150,42 +149,39 @@ def callBuiltIn(statement, env):
         if not arg in env:
             raise ShtripedError('Variable "' + arg + '" has not been declared in this scope and thus cannot be trashed.', statement)
         val = env[arg]
-        delattr(env, arg)
+        del(env[arg])
         return val
     argEnv = getEnv(arg, env)
     if not argEnv:
         raise ShtripedError('Variable "' + arg + '" not found while trying to call built-in function "' + statement['name'] + '".', statement)
     val = argEnv[arg]
-    if not isinstance(val, collections.Mapping) and hasattr(val, 'body'):
+    if isinstance(val, collections.Mapping) and val['body']:
         raise ShtripedError('Built-in function "' + statement['name'] + '" cannot be called on the function "' + arg + '".', statement)
     return COMMAND_FUNCTIONS[statement['name']](argEnv, arg, val)
 
 # Executes parsed Shtriped code given as a def with a body, in a given environment
 def execute(func, env):
     retVal = 0
-    for i in range(len(func['body'][0])):
-        if not isinstance(func['body'][0], collections.Sequence):
-            statement = func['body'][0]
-        else:
-            statement = func['body'][0][i]
-        if isinstance(statement, collections.Mapping) and hasattr(statement, 'body'): # function definition
+    i = 0
+    max = len(func['body'])
+    while i < max:
+        statement = func['body'][i]
+        if isinstance(statement, collections.Mapping) and statement['body']: # function definition
             if statement['name'] in env:
                 raise ShtripedError('Variable "' + statement['name'] + '" has already been declared in this scope and must be trashed to be (re)defined as a function.', statement)
 
             retVal = env[statement['name']] = { 'args': statement['args'], 'body': statement['body'], 'env': env }
         else: # function call
             callEnv = getEnv(statement['name'], env)
-            print 'callEnv', callEnv
             if callEnv: # User defined function
                 userFunc = callEnv[statement['name']]
-                if not isinstance(userFunc, collections.Mapping) and hasattr(userFunc, 'body'):
+                if not (isinstance(userFunc, collections.Mapping) and userFunc['body']):
                     raise ShtripedError('Cannot call the integer "' + statement['name'] + '" as a function.', statement)
 
                 if len(statement['args']) != len(userFunc['args']) and len(statement['args']) != len(userFunc['args']) + 1:
                     raise ShtripedError('Function "' + statement['name'] + '" expects ' + len(userFunc['args']) + ' or ' + (len(userFunc['args']) + 1) + ' arguments but got ' + len(statement['args']) + '.', statement)
                 
                 newEnv = { '': userFunc['env'] }
-                print 'new', newEnv
                 for j in range(len(userFunc['args'])):
                     argEnv = getEnv(statement['args'][j], env)
                     if not argEnv:
@@ -194,11 +190,13 @@ def execute(func, env):
                 if i == len(func['body']) - 1 and userFunc == func and len(statement['args']) == len(userFunc['args']): # Recursive tail call
                     retVal = 0
                     env = newEnv
-                    i = -1
+                    i = 0
+                    continue
                 else: # Normal call
                     retVal = execute(userFunc, newEnv)
                     if  len(statement['args']) > len(userFunc['args']):
-                        ret = statement['args'][len(statement['args']) - 1], retEnv = getEnv(retVar, env)
+                        retVar = statement['args'][len(statement['args']) - 1]
+                        retEnv = getEnv(retVar, env)
                         if not retEnv:
                             raise ShtripedError('Variable "' + ret+ '" not found while returning from function "' + statement['name'] + '".', statement)
                         retEnv[retVar] = retVal
@@ -214,6 +212,7 @@ def execute(func, env):
                 if returned == None: # not returned?
                     break
                 retVal = returned
+        i += 1
     return passAlong(retVal)
 
 # Runs list of Shtriped code files in order as if all the code was in one file (block comments do not carry between files)
@@ -223,8 +222,7 @@ def run(files):
     for file in files:
         f = open(file, 'r')
         code = f.read()
-        bytecode.append(parse(sanitize(code)))
-    print 'bytecode', bytecode
+        bytecode = bytecode + parse(sanitize(code))
     execute({ 'body': bytecode }, {})
 
 if __name__ == '__main__':
