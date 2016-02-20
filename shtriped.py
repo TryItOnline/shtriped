@@ -28,7 +28,7 @@ def PRINT_INT(argEnv, arg, val):
     print val
     return val
 def TAKE_INT(argEnv, arg, val):
-    input = readlineSync.question()
+    input = input('Enter a number: ')
     if not INT_PATTERN.test(input):
         raise ShtripedError('Cannot parse "' + input + '" as a positive decimal integer.', statement)
     argEnv[arg] = int(input)
@@ -61,11 +61,14 @@ COMPONENTS = {
 
 class ShtripedError(Exception):
     def __init__(self, message, statement):
-        self.message = message
+        self.value = message
         if statement:
-            self.message += ' [' + COMPONENTS['SEPARATOR'].join([statement['name']] + statement['args']) + ']'
+            self.value += ' [' + COMPONENTS['SEPARATOR'].join([statement['name']] + statement['args']) + ']'
+    def __str__(self):
+        return repr(self.value)
 
 def getEnv(variable, env):
+    print 'env', env
     while not variable in env:
         if not '' in env:
             return None
@@ -111,25 +114,27 @@ def parse(code):
     bytecode = []
     i = 0
     while i < len(code):
+        statement = code[i].split(COMPONENTS['SEPARATOR']) # code[i]
         i += 1
-        statement = code[0].split(COMPONENTS['SEPARATOR']) # code[i]
-        if not all(filter(None, statement)):
+        if not len(statement):
             raise ShtripedError('Invalid arrangement of separators on the line "' + code[i - 1] + '".', '')
-        if i < len(code) and len(code[i]) and code[i][0] == COMPONENTS['SEPARATOR']: # def definition
+        if i < len(code) and len(code[i]) and code[i][0] == COMPONENTS['SEPARATOR']: # function definition
             for j in range(1, len(statement)):
                 for k in range(1, j):
                     if statement[j] == statement[k]:
-                        raise ShtripedError('The definition for def "' + statement[0] + '" cannot have multiple arguments with the name "' + statement[j] + '".')
+                        raise ShtripedError('The definition for function "' + statement[0] + '" cannot have multiple arguments with the name "' + statement[j] + '".')
             body = []
             while i < len(code) and code[i][0] == COMPONENTS['SEPARATOR']:
-                i += 1
                 body.append(code[i][1:])
+                i += 1
             bytecode.append({ 'name': statement[0], 'args': statement[1:], 'body': parse(body) })
-        else: bytecode.append({ 'name': statement[0], 'args': statement[1:], 'body': None}) # function call
+        else:
+            bytecode.append({ 'name': statement[0], 'args': statement[1:], 'body': None}) # function call
+        # print bytecode
     return bytecode
 
 def passAlong(variable):
-    return variable if isinstance(variable, int) or (isinstance(variable, collections.Mapping) and variable['body']) else variable.deepcopy()
+    return variable if not hasattr(variable, 'deepcopy') or (isinstance(variable, collections.Mapping) and variable['body']) else variable.deepcopy()
 
 # Executes one of the 8 built-in Shtriped commands
 def callBuiltIn(statement, env):
@@ -137,47 +142,54 @@ def callBuiltIn(statement, env):
         raise ShtripedError('Built-in function "' + statement['name'] + '" expects one argument but got ' + len(statement['args']) + '.', statement)
     arg = statement['args'][0]
     if statement['name'] == COMMANDS['DECLARE']:
-        if arg in env: raise ShtripedError('Variable "' + arg + '" has already been declared in this scope.', statement)
+        if arg in env:
+            raise ShtripedError('Variable "' + arg + '" has already been declared in this scope.', statement)
         env[arg] = 0
         return env[arg]
     if statement['name'] == COMMANDS['TRASH']:
-        if not arg in env: raise ShtripedError('Variable "' + arg + '" has not been declared in this scope and thus cannot be trashed.', statement)
+        if not arg in env:
+            raise ShtripedError('Variable "' + arg + '" has not been declared in this scope and thus cannot be trashed.', statement)
         val = env[arg]
         delattr(env, arg)
         return val
     argEnv = getEnv(arg, env)
-    if not argEnv: raise ShtripedError('Variable "' + arg + '" not found while trying to call built-in function "' + statement['name'] + '".', statement)
+    if not argEnv:
+        raise ShtripedError('Variable "' + arg + '" not found while trying to call built-in function "' + statement['name'] + '".', statement)
     val = argEnv[arg]
-    if not isinstance(val, collections.Mapping) and val['body']:
-        raise ShtripedError('Built-in def "' + statement['name'] + '" cannot be called on the function "' + arg + '".', statement)
+    if not isinstance(val, collections.Mapping) and hasattr(val, 'body'):
+        raise ShtripedError('Built-in function "' + statement['name'] + '" cannot be called on the function "' + arg + '".', statement)
     return COMMAND_FUNCTIONS[statement['name']](argEnv, arg, val)
-    # Impossible to get here
 
 # Executes parsed Shtriped code given as a def with a body, in a given environment
 def execute(func, env):
     retVal = 0
     for i in range(len(func['body'][0])):
-        statement = func['body'][0][i]
-        if isinstance(statement, collections.Mapping) and statement['body']: # function definition
+        if not isinstance(func['body'][0], collections.Sequence):
+            statement = func['body'][0]
+        else:
+            statement = func['body'][0][i]
+        if isinstance(statement, collections.Mapping) and hasattr(statement, 'body'): # function definition
             if statement['name'] in env:
-                raise ShtripedError('Variable "' + statement['name'] + '" has already been declared in this scope and must be trashed to be (re)defined as a def.', statement)
+                raise ShtripedError('Variable "' + statement['name'] + '" has already been declared in this scope and must be trashed to be (re)defined as a function.', statement)
 
             retVal = env[statement['name']] = { 'args': statement['args'], 'body': statement['body'], 'env': env }
-        else: # def call
+        else: # function call
             callEnv = getEnv(statement['name'], env)
-            if callEnv: # User defined def
+            print 'callEnv', callEnv
+            if callEnv: # User defined function
                 userFunc = callEnv[statement['name']]
-                if not isinstance(userFunc, collections.Mapping) and userFunc['body']:
-                    raise ShtripedError('Cannot call the integer "' + statement['name'] + '" as a def.', statement)
+                if not isinstance(userFunc, collections.Mapping) and hasattr(userFunc, 'body'):
+                    raise ShtripedError('Cannot call the integer "' + statement['name'] + '" as a function.', statement)
 
                 if len(statement['args']) != len(userFunc['args']) and len(statement['args']) != len(userFunc['args']) + 1:
-                    raise ShtripedError('def "' + statement['name'] + '" expects ' + len(userFunc['args']) + ' or ' + (len(userFunc['args']) + 1) + ' arguments but got ' + len(statement['args']) + '.', statement)
+                    raise ShtripedError('Function "' + statement['name'] + '" expects ' + len(userFunc['args']) + ' or ' + (len(userFunc['args']) + 1) + ' arguments but got ' + len(statement['args']) + '.', statement)
                 
                 newEnv = { '': userFunc['env'] }
+                print 'new', newEnv
                 for j in range(len(userFunc['args'])):
                     argEnv = getEnv(statement['args'][j], env)
                     if not argEnv:
-                        raise ShtripedError('Variable "' + statement['args'][j] + '" not found while trying to call def "' + statement['name'] + '".', statement)
+                        raise ShtripedError('Variable "' + statement['args'][j] + '" not found while trying to call function "' + statement['name'] + '".', statement)
                     newEnv[userFunc['args'][j]] = passAlong(argEnv[statement['args'][j]])
                 if i == len(func['body']) - 1 and userFunc == func and len(statement['args']) == len(userFunc['args']): # Recursive tail call
                     retVal = 0
@@ -188,7 +200,7 @@ def execute(func, env):
                     if  len(statement['args']) > len(userFunc['args']):
                         ret = statement['args'][len(statement['args']) - 1], retEnv = getEnv(retVar, env)
                         if not retEnv:
-                            raise ShtripedError('Variable "' + ret+ '" not found while returning from def "' + statement['name'] + '".', statement)
+                            raise ShtripedError('Variable "' + ret+ '" not found while returning from function "' + statement['name'] + '".', statement)
                         retEnv[retVar] = retVal
             else: # Built-in def
                 funcNotFound = True
@@ -197,10 +209,10 @@ def execute(func, env):
                         funcNotFound = False
                         break
                 if funcNotFound:
-                    raise ShtripedError('def "' + statement['name'] + '" not found.', statement)
-
+                    raise ShtripedError('Function "' + statement['name'] + '" not found.', statement)
                 returned = callBuiltIn(statement, env)
-                if returned == None: break
+                if returned == None: # not returned?
+                    break
                 retVal = returned
     return passAlong(retVal)
 
@@ -212,6 +224,7 @@ def run(files):
         f = open(file, 'r')
         code = f.read()
         bytecode.append(parse(sanitize(code)))
+    print 'bytecode', bytecode
     execute({ 'body': bytecode }, {})
 
 if __name__ == '__main__':
