@@ -24,6 +24,8 @@ var COMPONENTS = Object.freeze({
 	COMMENT_LEFT: '[',
 	COMMENT_RIGHT: ']'
 })
+var PARENT_ENV_KEY = ''
+var MAIN_FUNC = COMPONENTS.SEPARATOR
 
 function ShtripedError(message, stmt) {
 	this.message = message
@@ -68,10 +70,10 @@ function intToStr(i) {
 
 function getEnv(variable, env) {
 	while (!(variable in env)) {
-		if (!('' in env)) {
+		if (!(PARENT_ENV_KEY in env)) {
 			return null
 		}
-		env = env['']
+		env = env[PARENT_ENV_KEY]
 	}
 	return env
 }
@@ -119,7 +121,11 @@ function sanitize(code) {
 // Parses sanitized Shtriped code into executable bytecode
 function parse(code) {
 	if (typeof code === 'string') {
-		code = code.split(/\r?\n/)
+		if (code) {
+			code = code.split(/\r?\n/)
+		} else {
+			code = []
+		}
 	}
 	var bytecode = [], i = 0
 	while (i < code.length) {
@@ -246,7 +252,8 @@ function execute(func, env) {
 				if (stmt.args.length !== userFunc.args.length && stmt.args.length !== userFunc.args.length + 1)
 					throw err('Function "' + stmt.name + '" expects ' + userFunc.args.length + ' or ' + (userFunc.args.length + 1) + ' arguments but got ' + stmt.args.length + '.', stmt)
 				
-				var newEnv = { '': userFunc.env }
+				var newEnv = {}
+				newEnv[PARENT_ENV_KEY] = userFunc.env
 				for (var j = 0; j < userFunc.args.length; j++) {
 					var argEnv = getEnv(stmt.args[j], env)
 					if (!argEnv)
@@ -294,22 +301,25 @@ function run(files) {
 	if (files.length < 1)
 		throw err('At least one code file is required.')
 
-	var bytecode = []
-	function readFile(i) {
+	function readFile(i, childBytecode) {
 		fs.readFile(files[i], 'utf8', function(error, code) {
 			if (error)
 				throw err('Issue loading code file "' + files[i] + '". ' + error.message)
 
-			Array.prototype.push.apply(bytecode, parse(sanitize(code)))
+			var bytecode = parse(sanitize(code))
+			if (i < files.length - 1) {
+				bytecode.push({ name: MAIN_FUNC, args: [], body: childBytecode})
+				bytecode.push({ name: MAIN_FUNC, args: [], body: null })
+			}
 
-			if (i + 1 < files.length) {
-				readFile(i + 1)
+			if (i > 0) {
+				readFile(i - 1, bytecode)
 			} else {
 				execute({ body: bytecode }, {})
 			}
 		})
 	}
-	readFile(0)
+	readFile(files.length - 1)
 }
 
 run(process.argv.slice(2))
