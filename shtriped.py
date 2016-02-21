@@ -29,7 +29,7 @@ def PRINT_INT(argEnv, arg, val):
     sys.stdout.write(str(val))
     return val
 def TAKE_INT(argEnv, arg, val):
-    u_input = raw_input('Enter a number: ')
+    u_input = raw_input('\r\nEnter a number: ')
     if not re.search(INT_PATTERN, u_input):
         raise ShtripedError('Cannot parse "' + u_input + '" as a positive decimal integer.', statement)
     argEnv[arg] = int(u_input)
@@ -38,7 +38,7 @@ def PRINT_STR(argEnv, arg, val):
     sys.stdout.write(intToStr(val))
     return val
 def TAKE_STR(argEnv, arg, val):
-    u_input = raw_input('Enter a string: ')
+    u_input = raw_input('\r\nEnter a string: ')
     for i in u_input:
         if ALPHABET.index(i) == -1:
             raise ShtripedError('Input string contains forbidden character "' + u_input[i] + '".', statement)
@@ -60,6 +60,9 @@ COMPONENTS = {
     'COMMENT_RIGHT': ']'
 }
 
+PARENT_ENV_KEY = ''
+MAIN_FUNC = COMPONENTS['SEPARATOR']
+
 class ShtripedError(Exception):
     def __init__(self, message, statement):
         self.value = message
@@ -72,7 +75,7 @@ def strToInt(s):
 	i = 0
 	place = 1
 	for j in range(len(s) - 1, -1, -1):
-		i = i + (place * (ALPHABET.index(str[j]) + 1))
+		i = i + (place * (ALPHABET.index(s[j]) + 1))
 		place = place * len(ALPHABET)
 	return i
 
@@ -92,9 +95,9 @@ def intToStr(i):
 
 def getEnv(variable, env):
     while not variable in env:
-        if not '' in env:
+        if not PARENT_ENV_KEY in env:
             return None
-        env = env['']
+        env = env[PARENT_ENV_KEY]
     return env
 
 # Removes comments and unnecessary whitespace, returning ready to parse Shtriped code
@@ -132,7 +135,10 @@ def sanitize(code):
 # Parses sanitized Shtriped code into executable bytecode
 def parse(code):
     if isinstance(code, basestring):
-        code = re.split('\r?\n', code)
+        if code:
+            code = re.split('\r?\n', code)
+        else:
+            code = []
     bytecode = []
     i = 0
     while i < len(code):
@@ -203,7 +209,7 @@ def execute(func, env):
                 if len(statement['args']) != len(userFunc['args']) and len(statement['args']) != len(userFunc['args']) + 1:
                     raise ShtripedError('Function "' + statement['name'] + '" expects ' + len(userFunc['args']) + ' or ' + (len(userFunc['args']) + 1) + ' arguments but got ' + len(statement['args']) + '.', statement)
                 
-                newEnv = { '': userFunc['env'] }
+                newEnv = { PARENT_ENV_KEY: userFunc['env'] }
                 for j in range(len(userFunc['args'])):
                     argEnv = getEnv(statement['args'][j], env)
                     if not argEnv:
@@ -241,10 +247,16 @@ def execute(func, env):
 def run(files):
     if len(files) < 1: raise ShtripedError('At least one code file is required.', '')
     bytecode = []
-    for file in files:
+    i = len(files) - 1
+    for file in reversed(files):
+        i -= 1
         f = open(file, 'r')
         code = f.read()
-        bytecode = bytecode + parse(sanitize(code))
+        new_bytecode = parse(sanitize(code))
+        if i > 0:
+            new_bytecode.append({ 'name': MAIN_FUNC, 'args': [], 'body': bytecode})
+            new_bytecode.append({ 'name': MAIN_FUNC, 'args': [], 'body': None })
+        bytecode = new_bytecode
     execute({ 'body': bytecode }, {})
 
 if __name__ == '__main__':
