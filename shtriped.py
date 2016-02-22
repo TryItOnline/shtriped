@@ -26,32 +26,33 @@ def DECREMENT(argEnv, arg, val):
     argEnv[arg] = val - 1
     return argEnv[arg]
 def PRINT_INT(argEnv, arg, val):
-    sys.stdout.write(str(val))
+    print(str(val), end='')
     return val
 def TAKE_INT(argEnv, arg, val):
-    u_input = raw_input('\r\nEnter a number: ')
+    u_input = input('Enter a number: ')
     if not re.search(INT_PATTERN, u_input):
         raise ShtripedError('Cannot parse "' + u_input + '" as a positive decimal integer.', statement)
     argEnv[arg] = int(u_input)
     return argEnv[arg]
 def PRINT_STR(argEnv, arg, val):
-    sys.stdout.write(intToStr(val))
+    print(intToStr(val), end='')
     return val
 def TAKE_STR(argEnv, arg, val):
-    u_input = raw_input('\r\nEnter a string: ')
+    u_input = input('Enter a string: ')
     for i in u_input:
         if ALPHABET.index(i) == -1:
             raise ShtripedError('Input string contains forbidden character "' + u_input[i] + '".', statement)
     argEnv[arg] = strToInt(u_input)
     return argEnv[arg]
 
-COMMAND_FUNCTIONS = {}
-COMMAND_FUNCTIONS[COMMANDS['INCREMENT']] = INCREMENT
-COMMAND_FUNCTIONS[COMMANDS['DECREMENT']] = DECREMENT
-COMMAND_FUNCTIONS[COMMANDS['PRINT_INT']] = PRINT_INT
-COMMAND_FUNCTIONS[COMMANDS['TAKE_INT']] = TAKE_INT
-COMMAND_FUNCTIONS[COMMANDS['PRINT_STR']] = PRINT_STR
-COMMAND_FUNCTIONS[COMMANDS['TAKE_STR']] = TAKE_STR
+COMMAND_FUNCTIONS = {
+    COMMANDS['INCREMENT']: INCREMENT,
+    COMMANDS['DECREMENT']: DECREMENT,
+    COMMANDS['PRINT_INT']: PRINT_INT,
+    COMMANDS['TAKE_INT']: TAKE_INT,
+    COMMANDS['PRINT_STR']: PRINT_STR,
+    COMMANDS['TAKE_STR']: TAKE_STR
+}
 
 COMPONENTS = {
     'SEPARATOR': ' ',
@@ -72,26 +73,26 @@ class ShtripedError(Exception):
         return repr(self.value)
 
 def strToInt(s):
-	i = 0
-	place = 1
-	for j in range(len(s) - 1, -1, -1):
-		i = i + (place * (ALPHABET.index(s[j]) + 1))
-		place = place * len(ALPHABET)
-	return i
+    i = 0
+    place = 1
+    for j in range(len(s) - 1, -1, -1):
+        i = i + (place * (ALPHABET.index(s[j]) + 1))
+        place = place * len(ALPHABET)
+    return i
 
 def intToStr(i):
-	length = 0
-	offset = 1
-	while i >= offset:
-		i -= offset
-		offset = offset * len(ALPHABET)
-		length += 1
-	s = ''
-	while not i == 0:
-		s += ALPHABET[i % len(ALPHABET)]
-		i = i / len(ALPHABET)
-	s = s[::-1]
-	return ALPHABET[0] * (length - len(s)) + s
+    length = 0
+    offset = 1
+    while i >= offset:
+        i -= offset
+        offset = offset * len(ALPHABET)
+        length += 1
+    s = ''
+    while not i == 0:
+        s += ALPHABET[i % len(ALPHABET)]
+        i = i // len(ALPHABET)
+    s = s[::-1]
+    return ALPHABET[0] * (length - len(s)) + s
 
 def getEnv(variable, env):
     while not variable in env:
@@ -134,7 +135,7 @@ def sanitize(code):
 
 # Parses sanitized Shtriped code into executable bytecode
 def parse(code):
-    if isinstance(code, basestring):
+    if isinstance(code, str):
         if code:
             code = re.split('\r?\n', code)
         else:
@@ -244,7 +245,7 @@ def execute(func, env):
     return passAlong(retVal)
 
 # Runs list of Shtriped code files in order as if all the code was in one file (block comments do not carry between files)
-def run(files):
+def run(files, python=False):
     if len(files) < 1: raise ShtripedError('At least one code file is required.', '')
     bytecode = []
     i = len(files) - 1
@@ -257,7 +258,107 @@ def run(files):
             new_bytecode.append({ 'name': MAIN_FUNC, 'args': [], 'body': bytecode})
             new_bytecode.append({ 'name': MAIN_FUNC, 'args': [], 'body': None })
         bytecode = new_bytecode
-    execute({ 'body': bytecode }, {})
+    if python:
+        return toPython(bytecode)
+    else:
+        execute({ 'body': bytecode }, {})
+
+PYTHON = {
+    COMMANDS['DECLARE']: lambda arg: arg + ' = 0',
+    COMMANDS['TRASH']: lambda arg: 'del ' + arg,
+    COMMANDS['INCREMENT']: lambda arg: arg + ' += 1',
+    COMMANDS['DECREMENT']: lambda arg: arg + ' -= 1',
+    COMMANDS['PRINT_INT']: lambda arg: 'print(' + arg + ')',
+    COMMANDS['TAKE_INT']: lambda arg: arg + ' = int(input(\'Enter a number: \'))',
+    COMMANDS['PRINT_STR']: lambda arg: 'print(intToStr(' + arg + '))',
+    COMMANDS['TAKE_STR']: lambda arg: arg + ' = strToInt(input(\'Enter a string: \'))'
+}
+
+def toPython(bytecode, isGlobal=None, baseArgs=None, python=None, depth=None, functions=None, functionArgs=None, variables=None, currentLetter=None, loops=None):
+    python = python if python else '''
+import sys
+ALPHABET = \'\\t\\n\\v\\f\\r !"#$%&\\\'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~\'
+
+def strToInt(s):
+    i = 0
+    place = 1
+    for j in range(len(s) - 1, -1, -1):
+        i = i + (place * (ALPHABET.index(s[j]) + 1))
+        place = place * len(ALPHABET)
+    return i
+
+def intToStr(i):
+    length = 0
+    offset = 1
+    while i >= offset:
+        i -= offset
+        offset = offset * len(ALPHABET)
+        length += 1
+    s = ''
+    while not i == 0:
+        s += ALPHABET[i % len(ALPHABET)]
+        i = i // len(ALPHABET)
+    s = s[::-1]
+    return ALPHABET[0] * (length - len(s)) + s
+'''
+    retVal = 0
+    i = 0
+    isGlobal = isGlobal if isGlobal else True
+    depth = depth if depth else 0
+    functions = functions if functions else []
+    functionArgs = functionArgs if functionArgs else {}
+    variables = variables if variables else {}
+    loops = loops or False
+    currentLetter = currentLetter if currentLetter else 'A'
+    baseArgs = baseArgs if baseArgs else []
+    globls = []
+    for i in range(len(bytecode)):
+        statement = bytecode[i]
+        if isinstance(statement, collections.Mapping) and statement['body']:
+            if not statement['name'] in variables:
+                variables[statement['name']] = currentLetter
+                currentLetter = chr(ord(currentLetter) + 1)
+            functions.append(statement['name'])
+            for arg in statement['args']:
+                variables[arg] = currentLetter
+                currentLetter = chr(ord(currentLetter) + 1)
+            python += '    ' * depth + 'def ' + variables[statement['name']] + '(' + ','.join([variables[var] for var in statement['args']]) + '):\r\n'
+            functionArgs[statement['name']] = len(statement['args'])
+            loops =  statement['body'][-1]['name'] == statement['name']
+            depth += 1
+            if loops:
+                python += '    ' * depth + 'while True:\r\n'
+                depth += 1
+            python = toPython(statement['body'], False, statement['args'], python, depth, functions, functionArgs, variables, currentLetter, loops)
+            if loops:
+                depth -= 1
+            loops = False
+            depth -= 1
+        else:
+            if not loops or not i == len(bytecode) - 1:
+                args = statement['args'] if isinstance(statement['args'], collections.Iterable) else [args]
+                for arg in args:
+                    if not arg in variables:
+                        variables[arg] = currentLetter
+                        currentLetter = chr(ord(currentLetter) + 1)
+                    if not isGlobal and not arg in baseArgs and not arg in globls:
+                        python += '    ' * depth + 'global ' + variables[arg] + '\r\n'
+                        globls.append(arg)
+                if statement['name'] in PYTHON:
+                    if statement['name'] == COMMANDS['DECREMENT']:
+                        if isGlobal:
+                            python += '    ' * depth + 'if ' + variables[args[0]] + ' == 0: sys.exit(0)' + '\r\n'
+                        else:
+                            python += '    ' * depth + 'if ' + variables[args[0]] + ' == 0: return' + '\r\n'
+                    python += '    ' * depth + PYTHON[statement['name']](variables[args[0]]) + '\r\n'
+                else:
+                    assignTo = (variables[statement['args'][-1]] + ' = ') if len(statement['args']) else ''
+                    args = statement['args'][:-1] if statement['name'] in functionArgs and len(statement['args']) > functionArgs[statement['name']] else statement['args']
+                    python += '    ' * depth + assignTo + variables[statement['name']] + '(' + ','.join([variables[var] for var in args]) + ')\r\n'
+    return python
 
 if __name__ == '__main__':
-    run(sys.argv[1:])
+    if sys.argv[1] == '--python':
+        print(run([sys.argv[2]], True))
+    else:
+        run(sys.argv[1:])
