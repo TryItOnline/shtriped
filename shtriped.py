@@ -274,7 +274,7 @@ PYTHON = {
     COMMANDS['TAKE_STR']: lambda arg: arg + ' = strToInt(input(\'Enter a string: \'))'
 }
 
-def toPython(bytecode, isGlobal=None, baseArgs=None, python=None, depth=None, functions=None, functionArgs=None, variables=None, currentLetter=None, loops=None):
+def toPython(bytecode, isGlobal=None, baseArgs=None, python=None, depth=None, functionDepth=None, functions=None, functionArgs=None, variables=None, currentLetter=None, loops=None):
     python = python if python else '''
 import sys
 ALPHABET = \'\\t\\n\\v\\f\\r !"#$%&\\\'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~\'
@@ -303,8 +303,9 @@ def intToStr(i):
 '''
     retVal = 0
     i = 0
-    isGlobal = isGlobal if isGlobal else True
+    isGlobal = isGlobal if isGlobal == False else True
     depth = depth if depth else 0
+    functionDepth = functionDepth if functionDepth else 0
     functions = functions if functions else []
     functionArgs = functionArgs if functionArgs else {}
     variables = variables if variables else {}
@@ -325,15 +326,17 @@ def intToStr(i):
             python += '    ' * depth + 'def ' + variables[statement['name']] + '(' + ','.join([variables[var] for var in statement['args']]) + '):\r\n'
             functionArgs[statement['name']] = len(statement['args'])
             loops =  statement['body'][-1]['name'] == statement['name']
+            functionDepth += 1
             depth += 1
             if loops:
                 python += '    ' * depth + 'while True:\r\n'
                 depth += 1
-            python = toPython(statement['body'], False, statement['args'], python, depth, functions, functionArgs, variables, currentLetter, loops)
+            python = toPython(statement['body'], False, statement['args'], python, depth, functionDepth, functions, functionArgs, variables, currentLetter, loops)
             if loops:
                 depth -= 1
             loops = False
             depth -= 1
+            functionDepth -= 1
         else:
             if not loops or not i == len(bytecode) - 1:
                 args = statement['args'] if isinstance(statement['args'], collections.Iterable) else [args]
@@ -342,7 +345,10 @@ def intToStr(i):
                         variables[arg] = currentLetter
                         currentLetter = chr(ord(currentLetter) + 1)
                     if not isGlobal and not arg in baseArgs and not arg in globls:
-                        python += '    ' * depth + 'global ' + variables[arg] + '\r\n'
+                        if functionDepth == 1:
+                            python += '    ' * depth + 'global ' + variables[arg] + '\r\n'
+                        else:
+                            python += '    ' * depth + 'nonlocal ' + variables[arg] + '\r\n'
                         globls.append(arg)
                 if statement['name'] in PYTHON:
                     if statement['name'] == COMMANDS['DECREMENT']:
