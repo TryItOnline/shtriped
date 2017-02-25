@@ -29,7 +29,7 @@ def PRINT_INT(argEnv, arg, val):
     print(str(val), end='')
     return val
 def TAKE_INT(argEnv, arg, val):
-    u_input = input('Enter a number: ')
+    u_input = input()
     if not re.search(INT_PATTERN, u_input):
         raise ShtripedError('Cannot parse "' + u_input + '" as a positive decimal integer.', statement)
     argEnv[arg] = int(u_input)
@@ -38,7 +38,7 @@ def PRINT_STR(argEnv, arg, val):
     print(intToStr(val), end='')
     return val
 def TAKE_STR(argEnv, arg, val):
-    u_input = input('Enter a string: ')
+    u_input = input()
     for i in u_input:
         if ALPHABET.index(i) == -1:
             raise ShtripedError('Input string contains forbidden character "' + u_input[i] + '".', statement)
@@ -269,9 +269,9 @@ PYTHON = {
     COMMANDS['INCREMENT']: lambda arg: arg + ' += 1',
     COMMANDS['DECREMENT']: lambda arg: arg + ' -= 1',
     COMMANDS['PRINT_INT']: lambda arg: 'print(' + arg + ')',
-    COMMANDS['TAKE_INT']: lambda arg: arg + ' = int(input(\'Enter a number: \'))',
+    COMMANDS['TAKE_INT']: lambda arg: arg + ' = int(input())',
     COMMANDS['PRINT_STR']: lambda arg: 'print(intToStr(' + arg + '))',
-    COMMANDS['TAKE_STR']: lambda arg: arg + ' = strToInt(input(\'Enter a string: \'))'
+    COMMANDS['TAKE_STR']: lambda arg: arg + ' = strToInt(input())'
 }
 
 def toPython(bytecode, isGlobal=None, baseArgs=None, python=None, depth=None, functionDepth=None, functions=None, functionArgs=None, variables=None, currentLetter=None, loops=None):
